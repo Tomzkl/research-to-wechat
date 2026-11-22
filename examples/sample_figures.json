@@ -1,0 +1,13 @@
+{
+  "figures": [
+    {"metric": "营业收入", "value": 123.4, "unit": "亿元", "period": "2025Q3"},
+    {"metric": "营业收入", "value": 100.0, "unit": "亿元", "period": "2024Q3", "growth": 23.4},
+    {"metric": "营业收入", "value": 999.0, "unit": "亿元", "period": "2025Q3"},
+    {"metric": "归母净利润", "value": 15.2, "unit": "亿元", "period": "2025Q3"},
+    {"metric": "毛利率", "value": 28.6, "unit": "%", "period": "2025Q3"},
+    {"metric": "净利率", "value": 120.0, "unit": "%", "period": "2025Q3"},
+    {"metric": "总资产", "value": 500.0, "unit": "亿元", "period": "2025Q3"},
+    {"metric": "总负债", "value": 300.0, "unit": "亿元", "period": "2025Q3"},
+    {"metric": "所有者权益", "value": 180.0, "unit": "亿元", "period": "2025Q3"}
+  ]
+}
