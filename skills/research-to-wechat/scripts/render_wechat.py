@@ -45,6 +45,19 @@ STYLE = {
 }
 
 
+_SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.\-]*:")
+ALLOWED_SCHEMES = ("http:", "https:", "mailto:")
+
+
+def _safe_url(url: str) -> str:
+    """只放行 http/https/mailto 或相对/锚点链接,封禁 javascript:/data:/vbscript: 等。"""
+    u = url.strip()
+    m = _SCHEME_RE.match(u)
+    if not m:
+        return u  # 相对路径 / 锚点 / 无 scheme
+    return u if u[:m.end()].lower() in ALLOWED_SCHEMES else "#"
+
+
 def inline(text: str) -> str:
     """行内元素: 转义 → 加粗/行内代码/斜体/链接。"""
     text = html.escape(text)
@@ -52,7 +65,7 @@ def inline(text: str) -> str:
     text = re.sub(r"`([^`]+)`", lambda m: f'<code style="{STYLE["code"]}">{m.group(1)}</code>', text)
     text = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"<em>\1</em>", text)
     text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)",
-                  lambda m: f'<a href="{m.group(2)}" style="{STYLE["a"]}">{m.group(1)}</a>', text)
+                  lambda m: f'<a href="{_safe_url(m.group(2))}" style="{STYLE["a"]}">{m.group(1)}</a>', text)
     return text
 
 
