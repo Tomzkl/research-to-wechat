@@ -2,7 +2,7 @@
 
 # research-to-wechat
 
-**把财报 / 研报,变成一篇核对过数据、可直接群发的公众号文章。**
+**把真实财报,变成可信的结构化数据 + 交叉核对 → 一篇可直接群发的公众号文章。**
 
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
@@ -17,6 +17,21 @@
 > **English**: a Claude Code skill that turns an earnings / research report into a data-verified, publish-ready WeChat Official Account article in one pipeline. See [English](#english) below.
 
 ---
+
+## 真实案例:贵州茅台 2023 年报(143 页)
+
+一条命令跑真实年报,自动抽出**合并口径**关键指标(中文零乱码、单位自动识别、自动区分合并/母公司报表):
+
+| 指标 | 值 |
+| --- | --- |
+| 营业总收入 | 1505.6 亿 |
+| 营业收入 | 1476.94 亿 |
+| 归母净利润 | 747.34 亿 |
+| 总资产 | 2727.0 亿 |
+| 总负债 | 490.43 亿 |
+| 经营现金流 | 665.93 亿 |
+
+→ 产出的成品文章:[`examples/moutai_2023_article.md`](examples/moutai_2023_article.md)
 
 ## 这是什么
 

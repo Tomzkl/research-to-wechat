@@ -104,18 +104,24 @@ def _pdf_to_text(p: pathlib.Path) -> str:
 
 # ---------- 表格抽取(仅 PDF) ----------
 
-def extract_pdf_tables(path: str):
-    """返回 PDF 中所有表格(每个表格 = 二维列表)。pdfplumber 未装时返回 None。"""
+def extract_pdf_tables_with_context(path: str):
+    """返回 [(table, page_text)] — 表格及其所在页文本(用于识别合并/母公司口径)。"""
     try:
         import pdfplumber
+        import pypdfium2 as pdfium
     except ImportError:
         return None
-    tables = []
+    results = []
+    pdfium_doc = pdfium.PdfDocument(str(path))
+    try:
+        page_texts = [pdfium_doc[i].get_textpage().get_text_range() for i in range(len(pdfium_doc))]
+    finally:
+        pdfium_doc.close()
     with pdfplumber.open(path) as pdf:
-        for page in pdf.pages:
+        for i, page in enumerate(pdf.pages):
             for t in page.extract_tables():
-                tables.append(t)
-    return tables
+                results.append((t, page_texts[i] if i < len(page_texts) else ""))
+    return results
 
 
 def classify_table(rows) -> str:
@@ -148,7 +154,27 @@ def _looks_like_header(row) -> bool:
     return any(k in joined for k in ("年", "度", "期", "季", "项目", "指标", "科目", "附注"))
 
 
-def table_to_statement(table):
+STYPE_TITLE = {
+    "income_statement": "利润表",
+    "balance_sheet": "资产负债表",
+    "cash_flow_statement": "现金流量表",
+}
+
+
+def detect_scope(title_text: str, page_text: str, stype: str):
+    """识别合并/母公司口径(优先表标题,其次整页文本)。"""
+    stitle = STYPE_TITLE.get(stype)
+    if not stitle:
+        return None
+    combined = (title_text or "") + "\n" + (page_text or "")
+    if f"合并{stitle}" in combined:
+        return "consolidated"
+    if f"母公司{stitle}" in combined:
+        return "parent"
+    return None
+
+
+def table_to_statement(table, page_text: str = None):
     """把一张二维表格转成结构化 statement;非数据表返回 None。"""
     rows = []
     for raw in table:
@@ -158,9 +184,11 @@ def table_to_statement(table):
     if not rows:
         return None
 
-    # 跳过开头无数字的标题行(如「合并利润表」「资产负债表」)
+    # 收集开头无数字的标题行(如「合并利润表」),用于识别口径
+    title_text = ""
     idx = 0
     while idx < len(rows) and _is_title_row(rows[idx]):
+        title_text += "".join(rows[idx])
         idx += 1
     if idx >= len(rows):
         return None
@@ -176,6 +204,7 @@ def table_to_statement(table):
     text = " ".join(" ".join(r) for r in rows)
     stype = classify_table(rows)
     unit = detect_unit(text)
+    scope = detect_scope(title_text, page_text, stype)
 
     parsed = []
     for r in data_rows:
@@ -186,7 +215,67 @@ def table_to_statement(table):
         parsed.append({"label": r[0], "values": [v for v in r[1:] if v]})
     if not parsed:
         return None
-    return {"type": stype, "unit": unit, "columns": [c for c in header if c], "rows": parsed}
+    return {"type": stype, "unit": unit, "scope": scope,
+            "columns": [c for c in header if c], "rows": parsed}
+
+
+# 关键指标匹配(子串, 报表类型, 标准指标名)。顺序敏感:先更具体。
+KEY_METRIC_PATTERNS = [
+    ("营业总收入", "income_statement", "营业总收入"),
+    ("营业收入", "income_statement", "营业收入"),
+    ("扣除非经常性损益的净利润", "income_statement", "扣非净利润"),
+    ("股东的净利润", "income_statement", "归母净利润"),
+    ("经营活动产生的现金流量净额", "cash_flow_statement", "经营活动产生的现金流量净额"),
+    ("资产总计", "balance_sheet", "总资产"),
+    ("负债合计", "balance_sheet", "总负债"),
+    ("股东权益合计", "balance_sheet", "所有者权益"),
+]
+
+
+def _match_metric(label: str, pattern: str) -> bool:
+    """匹配关键指标;排除流动/非流动/少数股东等子项,只留合计。"""
+    if pattern == "负债合计":
+        return "负债合计" in label and "流动负债" not in label and "非流动负债" not in label
+    if pattern == "股东权益合计":
+        return "股东权益合计" in label and "少数股东权益" not in label and "归属于母公司" not in label
+    return pattern in label
+
+
+def _first_data_value(values):
+    """取第一个数据值;跳过附注编号(0-999 的整数)。"""
+    for v in values:
+        try:
+            f = float(str(v).replace(",", "").replace(" ", ""))
+        except (ValueError, TypeError):
+            continue
+        if f.is_integer() and 0 <= f < 1000:
+            continue  # 附注编号
+        return f
+    return None
+
+
+def statements_to_key_figures(statements):
+    """从合并报表中自动组装关键指标(flat figures),供核对/成文直接使用。"""
+    figures = []
+    for s in statements:
+        if s.get("scope") != "consolidated":
+            continue
+        for row in s["rows"]:
+            label = row["label"].replace(" ", "").replace("\n", "")
+            for pattern, stype, metric in KEY_METRIC_PATTERNS:
+                if s["type"] == stype and _match_metric(label, pattern):
+                    val = _first_data_value(row["values"])
+                    if val is not None:
+                        unit = s.get("unit") or "元"
+                        figures.append({
+                            "metric": metric,
+                            "value": val,
+                            "unit": unit,
+                            "value_yi": round(val / 1e8, 2) if unit == "元" else None,
+                            "statement": s["type"],
+                        })
+                    break
+    return figures
 
 
 # ---------- 文本正则扫描(兼容 .txt/.md 及无表格的 PDF) ----------
@@ -240,22 +329,31 @@ def main():
             "source": src,
             "meta": meta,
             "statements": [],
+            "key_figures": [],
             "figures": scan_figures(text),
             "raw_text_preview": text[:args.max_chars],
             "warnings": [],
         }
 
         if p.suffix.lower() == ".pdf":
-            tables = extract_pdf_tables(src)
+            tables = extract_pdf_tables_with_context(src)
             if tables:
-                for t in tables:
-                    stmt = table_to_statement(t)
+                last_scope = {}  # 跨页续表:无标题的续表继承上一张同类报表的口径
+                for t, page_text in tables:
+                    stmt = table_to_statement(t, page_text)
                     if stmt:
+                        stype = stmt["type"]
+                        if stmt.get("scope") is None and stype in last_scope:
+                            stmt["scope"] = last_scope[stype]
+                        if stmt.get("scope") is not None:
+                            last_scope[stype] = stmt["scope"]
                         data["statements"].append(stmt)
                 kinds = {s["type"] for s in data["statements"]}
+                scoped = sum(1 for s in data["statements"] if s.get("scope"))
+                data["key_figures"] = statements_to_key_figures(data["statements"])
                 data["warnings"].append(
                     f"已从 PDF 抽取 {len(data['statements'])} 张表格"
-                    f"({', '.join(sorted(kinds)) or 'unknown'})。单位与金额仍需回原文复核。"
+                    f"({', '.join(sorted(kinds)) or 'unknown'};识别出 {scoped} 张合并/母公司报表)。"
                 )
             else:
                 data["warnings"].append("PDF 未检测到表格,仅做文本正则扫描;建议人工核对关键数字。")

@@ -21,8 +21,10 @@ description: Use when the user wants to turn an earnings report, annual/quarterl
 
 每一步的产出格式见 `references/output_spec.md`。**任何一步发现关键数据缺失或冲突,先停下向用户确认,不要硬往下走。**
 
-1. **抽取** — 跑 `python scripts/extract_pdf.py <报告路径>`,得到结构化 JSON(元信息 + 关键指标 + 原文预览)。
-   - 脚本只是"预抽取 + 给你开头",**权威阅读者是你**:以报告原文为准,修正脚本漏抽/误抽的数字。注意「归母净利润」与「净利润」是不同口径,别混。
+1. **抽取** — 跑 `python scripts/extract_pdf.py <报告路径>`,得到结构化 JSON。
+   - 输出含 `statements`(三张报表,带 `scope` 区分合并/母公司)、`key_figures`(合并口径关键指标,已换算亿元)。
+   - **优先用 `scope="consolidated"` 的合并口径**;`key_figures` 可直接喂给核对步骤。
+   - 脚本是"预抽取 + 给你开头",**权威阅读者仍是你**:以报告原文为准,修正漏抽/误抽。注意「归母净利润」与「净利润」是不同口径,别混。
 2. **核对** — 把抽取结果整理成 figures JSON(格式见 `references/output_spec.md`),跑 `python scripts/validate_figures.py <figures.json>`,得到核对报告。
    - 核对规则见 `references/validation_rules.md`。有 FAIL 项必须向用户报告并确认如何处理,**不得悄悄改数字**。
 3. **成文** — 按 `templates/article_structure.md` 的骨架、`references/style_guide.md` 的风格写正文。
