@@ -4,8 +4,9 @@
 用法:
     python extract_pdf.py <报告.pdf|.txt|.md|.json> [--out out.json] [--max-chars 8000]
 
-PDF 处理(推荐安装 pdfplumber):
-  - 已装 pdfplumber: 抽取 PDF 中的表格,识别利润表/资产负债表/现金流量表,并检测列头单位。
+PDF 处理(推荐安装 pdfplumber,它自带 pypdfium2):
+  - 文字提取用 pypdfium2(PDFium 引擎,中文 ToUnicode 更稳,避免「公/元/年」等字乱码)。
+  - 表格抽取用 pdfplumber(识别利润表/资产负债表/现金流量表,检测列头单位)。
   - 未装: 退化为纯文本正则扫描(.txt/.md 始终走文本路径)。
 
 输出 JSON 结构:
@@ -70,6 +71,20 @@ def extract_text(path: str) -> str:
 
 
 def _pdf_to_text(p: pathlib.Path) -> str:
+    # 文字提取优先 pypdfium2(PDFium 引擎,中文 ToUnicode 处理最稳),
+    # 它对部分中文财报 PDF 的字体映射比 pdfminer 更可靠,能避免「公/元/年」等字乱码。
+    try:
+        import pypdfium2 as pdfium
+        pdf = pdfium.PdfDocument(str(p))
+        try:
+            return "\n".join(pdf[i].get_textpage().get_text_range() for i in range(len(pdf)))
+        finally:
+            pdf.close()
+    except ImportError:
+        pass
+    except Exception:
+        pass  # pypdfium2 处理异常则回退到 pdfplumber/pypdf
+
     for lib in ("pdfplumber", "pypdf"):
         try:
             if lib == "pdfplumber":
@@ -82,9 +97,8 @@ def _pdf_to_text(p: pathlib.Path) -> str:
         except ImportError:
             continue
     raise SystemExit(
-        "抽取 PDF 需要安装 pdfplumber 或 pypdf:\n"
-        "    pip install pdfplumber   # 表格友好,推荐\n"
-        "    pip install pypdf        # 轻量备选\n"
+        "抽取 PDF 需要安装 pypdfium2 / pdfplumber / pypdf 之一:\n"
+        "    pip install pdfplumber   # 含 pypdfium2(中文友好)+ pdfplumber(表格友好)\n"
     )
 
 
