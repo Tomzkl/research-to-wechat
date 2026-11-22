@@ -44,6 +44,21 @@
 
 这个 skill 把**抽取、核对、排版**这三步交给脚本(确定、可靠),把**写作**交给 Claude(理解、判断),并**强制在成文前过一遍数据核对**——避免"数字错了,文章就是事故"。
 
+## 它帮你抓住什么
+
+成文前,脚本自动核对这些财务"雷点",Claude 再在文章里把它们讲透:
+
+| 信号 | 它提醒你 |
+| --- | --- |
+| 经营现金流 / 净利润 < 0.7 | 赚的是"纸面利润",利润没变成现金 |
+| 应收账款增速 > 营收增速 | 可能靠放宽信用冲收入、藏雷 |
+| 扣非净利润 ≪ 归母净利润 | 利润靠卖资产 / 补贴,不可持续 |
+| 单位混用(万元 / 亿元) | 数字可能差 10000 倍 |
+| 毛利率显著高于同行 | 有定价权(护城河) |
+| 商誉 / 净资产 > 30% | 减值风险高 |
+
+> 完整规则见 `skills/research-to-wechat/references/style_guide.md`。
+
 ## 快速开始
 
 ### 安装
@@ -74,7 +89,7 @@ cp -r skills/research-to-wechat ~/.claude/skills/
 
 ### 示例
 
-`examples/` 下有可直接跑通的示例(4 份示例财报覆盖白酒 / 新能源 / 银行,均标注为虚构数据):
+`examples/` 下有可直接跑通的示例(4 份示例财报覆盖白酒 / 新能源 / 银行,均标注为虚构数据)。其中 `golden_article.md` 是一篇**标杆成品文章**(看看产出该是什么水平),`sample_report_tables.pdf` 演示 PDF 表格抽取:
 
 ```bash
 # 1. 抽取(文本无需依赖;PDF 需 pip install pdfplumber)
@@ -93,6 +108,7 @@ python skills/research-to-wechat/scripts/render_wechat.py examples/sample_articl
 .
 ├── README.md
 ├── LICENSE
+├── SUBMISSION.md             # 发布与推广清单
 ├── assets/
 │   └── demo.gif               # 演示 GIF
 ├── .claude-plugin/
@@ -103,19 +119,21 @@ python skills/research-to-wechat/scripts/render_wechat.py examples/sample_articl
 │   ├── sample_report_consumer.txt    # 白酒
 │   ├── sample_report_manufacturing.txt # 新能源
 │   ├── sample_report_bank.txt        # 银行
+│   ├── sample_report_tables.pdf      # PDF 表格抽取演示
+│   ├── golden_article.md             # 标杆成品文章
 │   ├── sample_figures.json           # 核对示例输入
 │   └── sample_article.md             # 排版示例输入
 └── skills/
     └── research-to-wechat/
         ├── SKILL.md               # 核心指令(流水线编排)
         ├── scripts/
-        │   ├── extract_pdf.py     # 财报/研报 → 结构化 JSON
-        │   ├── validate_figures.py# 财务数字交叉核对
+        │   ├── extract_pdf.py     # PDF 表格抽取 + 指标扫描 → 结构化 JSON
+        │   ├── validate_figures.py# 财务数字交叉核对(8 类检查)
         │   └── render_wechat.py   # Markdown → 公众号 HTML
         ├── templates/
         │   └── article_structure.md
         └── references/
-            ├── style_guide.md     # 写作风格
+            ├── style_guide.md     # 写作风格 + 财务洞察速查
             ├── validation_rules.md# 核对规则
             └── output_spec.md     # 各环节交接格式
 ```

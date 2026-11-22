@@ -26,6 +26,7 @@ description: Use when the user wants to turn an earnings report, annual/quarterl
 2. **核对** — 把抽取结果整理成 figures JSON(格式见 `references/output_spec.md`),跑 `python scripts/validate_figures.py <figures.json>`,得到核对报告。
    - 核对规则见 `references/validation_rules.md`。有 FAIL 项必须向用户报告并确认如何处理,**不得悄悄改数字**。
 3. **成文** — 按 `templates/article_structure.md` 的骨架、`references/style_guide.md` 的风格写正文。
+   - **质量标杆**:先读 `examples/golden_article.md`,产出要达到它的水准——结论有观点、每个数字配业务解读(毛利率→定价权、现金流/净利润→质量),不是复述报表。
    - 所有引用的数字都必须来自第 1、2 步核对过的结果;报告未披露就写「未披露」,**禁止编造或"合理估计"**。
 4. **排版** — 把正文写成 Markdown,跑 `python scripts/render_wechat.py <article.md>`,得到公众号可粘贴的 HTML。
    - 图片用占位符(公众号需手动上传图片),脚本会自动标注。

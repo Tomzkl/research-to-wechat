@@ -1,19 +1,24 @@
 #!/usr/bin/env python3
-"""extract_pdf.py — 财报/研报 → 结构化 JSON(预抽取 + 关键指标扫描)
+"""extract_pdf.py — 财报/研报 → 结构化 JSON(表格抽取 + 关键指标扫描)
 
 用法:
     python extract_pdf.py <报告.pdf|.txt|.md|.json> [--out out.json] [--max-chars 8000]
 
-PDF 文本抽取依赖(可选,按顺序尝试): pdfplumber > pypdf。未安装时:
-  - .txt / .md 直接读取(无需依赖)
-  - .pdf 会给出安装提示: pip install pdfplumber   (表格友好,推荐)
+PDF 处理(推荐安装 pdfplumber):
+  - 已装 pdfplumber: 抽取 PDF 中的表格,识别利润表/资产负债表/现金流量表,并检测列头单位。
+  - 未装: 退化为纯文本正则扫描(.txt/.md 始终走文本路径)。
 
 输出 JSON 结构:
   {
     "source": "...",
     "meta": {"title": "..."},
-    "figures": [{"metric": "营业收入", "value": 123.4, "unit": "亿元", "period": "2025Q3", "context": "原文片段"}],
-    "raw_text_preview": "...",   # 前 N 字符,供回原文核对
+    "statements": [                 # 从 PDF 表格抽取的三张报表(结构化)
+      {"type": "income_statement|balance_sheet|cash_flow_statement|unknown",
+       "unit": "元|万元|亿元|...", "columns": ["项目", "2025年", "2024年"],
+       "rows": [{"label": "营业收入", "values": ["12340000000", "10000000000"]}]}
+    ],
+    "figures": [...],               # 扁平关键指标(正则预抽取,供核对步骤用)
+    "raw_text_preview": "...",
     "warnings": [...]
   }
 
@@ -45,6 +50,15 @@ SORTED_METRICS = sorted(METRICS, key=len, reverse=True)
 UNIT_RE = r"(亿元|万元|千元|百万元|元|亿|万|%|％)"
 NUM_RE = r"([-+]?\d[\d,\.]*)"
 
+# 三张报表的关键词(用于识别表格类型)
+STATEMENT_KEYWORDS = {
+    "income_statement": ["营业收入", "营业成本", "营业利润", "利润总额", "净利润", "每股收益", "毛利"],
+    "balance_sheet": ["货币资金", "应收账款", "存货", "固定资产", "总资产", "总负债",
+                      "所有者权益", "流动资产", "流动负债", "资产总计", "负债合计"],
+    "cash_flow_statement": ["经营活动产生的现金流量", "投资活动产生的现金流量",
+                            "筹资活动产生的现金流量", "现金及现金等价物"],
+}
+
 
 def extract_text(path: str) -> str:
     p = pathlib.Path(path)
@@ -73,6 +87,83 @@ def _pdf_to_text(p: pathlib.Path) -> str:
         "    pip install pypdf        # 轻量备选\n"
     )
 
+
+# ---------- 表格抽取(仅 PDF) ----------
+
+def extract_pdf_tables(path: str):
+    """返回 PDF 中所有表格(每个表格 = 二维列表)。pdfplumber 未装时返回 None。"""
+    try:
+        import pdfplumber
+    except ImportError:
+        return None
+    tables = []
+    with pdfplumber.open(path) as pdf:
+        for page in pdf.pages:
+            for t in page.extract_tables():
+                tables.append(t)
+    return tables
+
+
+def classify_table(rows) -> str:
+    """按关键词命中数,判断表格属于哪张报表。"""
+    text = " ".join(" ".join(str(c or "") for c in row) for row in rows)
+    scores = {k: sum(text.count(kw) for kw in kws) for k, kws in STATEMENT_KEYWORDS.items()}
+    best = max(scores, key=scores.get)
+    return best if scores[best] > 0 else "unknown"
+
+
+def detect_unit(text: str):
+    """从表格文本里识别金额单位(列头「单位:万元」或单元格里的「万元」)。"""
+    m = re.search(r"单位[:：]?\s*(元|万元|亿元|千元|百万元)", text)
+    if m:
+        return m.group(1)
+    for u in ("亿元", "万元", "千元", "百万元", "元"):
+        if u in text:
+            return u
+    return None
+
+
+def _is_title_row(row) -> bool:
+    joined = "".join(row)
+    return bool(joined) and not any(ch.isdigit() for ch in joined)
+
+
+def table_to_statement(table):
+    """把一张二维表格转成结构化 statement;非数据表返回 None。"""
+    rows = []
+    for raw in table:
+        cells = [("" if c is None else str(c).strip().replace("\n", " ")) for c in raw]
+        if any(cells):
+            rows.append(cells)
+    if not rows:
+        return None
+
+    # 跳过开头无数字的标题行(如「合并利润表」「资产负债表」)
+    idx = 0
+    while idx < len(rows) and _is_title_row(rows[idx]):
+        idx += 1
+    if idx >= len(rows):
+        return None
+    header = rows[idx]
+    data_rows = rows[idx + 1:]
+
+    text = " ".join(" ".join(r) for r in rows)
+    stype = classify_table(rows)
+    unit = detect_unit(text)
+
+    parsed = []
+    for r in data_rows:
+        if not r or not r[0]:
+            continue
+        if all(not c or set(c) <= set("-—:：") for c in r):
+            continue
+        parsed.append({"label": r[0], "values": [v for v in r[1:] if v]})
+    if not parsed:
+        return None
+    return {"type": stype, "unit": unit, "columns": [c for c in header if c], "rows": parsed}
+
+
+# ---------- 文本正则扫描(兼容 .txt/.md 及无表格的 PDF) ----------
 
 def scan_figures(text: str) -> list:
     figures = []
@@ -105,7 +196,7 @@ def scan_meta(text: str) -> dict:
 
 
 def main():
-    ap = argparse.ArgumentParser(description="财报/研报 → 结构化 JSON(预抽取)")
+    ap = argparse.ArgumentParser(description="财报/研报 → 结构化 JSON(表格抽取 + 指标扫描)")
     ap.add_argument("input", help="报告文件(.pdf/.txt/.md/.json)")
     ap.add_argument("--out", help="输出 JSON 路径(默认 stdout)")
     ap.add_argument("--max-chars", type=int, default=8000, help="原文预览长度")
@@ -115,19 +206,38 @@ def main():
     if src.lower().endswith(".json"):
         data = json.loads(pathlib.Path(src).read_text(encoding="utf-8"))
     else:
+        p = pathlib.Path(src)
         text = extract_text(src)
+        meta = scan_meta(text)
+        meta["unit_hint"] = detect_unit(text)
         data = {
             "source": src,
-            "meta": scan_meta(text),
+            "meta": meta,
+            "statements": [],
             "figures": scan_figures(text),
             "raw_text_preview": text[:args.max_chars],
-            "warnings": ["仅预抽取,以原文为准;PDF 表格/扫描件可能漏抽,请人工复核关键数字。"],
+            "warnings": [],
         }
+
+        if p.suffix.lower() == ".pdf":
+            tables = extract_pdf_tables(src)
+            if tables:
+                for t in tables:
+                    stmt = table_to_statement(t)
+                    if stmt:
+                        data["statements"].append(stmt)
+                kinds = {s["type"] for s in data["statements"]}
+                data["warnings"].append(
+                    f"已从 PDF 抽取 {len(data['statements'])} 张表格"
+                    f"({', '.join(sorted(kinds)) or 'unknown'})。单位与金额仍需回原文复核。"
+                )
+            else:
+                data["warnings"].append("PDF 未检测到表格,仅做文本正则扫描;建议人工核对关键数字。")
 
     out = json.dumps(data, ensure_ascii=False, indent=2)
     if args.out:
         pathlib.Path(args.out).write_text(out, encoding="utf-8")
-        print(f"已写入 {args.out} (figures: {len(data.get('figures', []))} 条)")
+        print(f"已写入 {args.out} (statements: {len(data.get('statements', []))}, figures: {len(data.get('figures', []))})")
     else:
         print(out)
 

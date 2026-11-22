@@ -39,6 +39,8 @@ def norm_value(value, unit):
     return None if scale is None else value * scale
 
 
+# ---------- 一致性核对 ----------
+
 def check_duplicates(figures):
     """同名同期指标出现多个且数值不一致 → FAIL(冲突)。"""
     seen, out = {}, []
@@ -118,6 +120,65 @@ def check_balance(figures):
     }]
 
 
+# ---------- 财务语义核对(新增) ----------
+
+def check_metric_consistency(figures):
+    """口径检查:净利润 vs 归母净利润、扣非 vs 归母。"""
+    out = []
+    periods = sorted({f.get("period") for f in figures if f.get("period")})
+    for period in periods:
+        def pick(metric):
+            return next((f for f in figures if f.get("metric") == metric and f.get("period") == period), None)
+        net, guimu, kf = pick("净利润"), pick("归母净利润"), pick("扣非净利润")
+        if net and guimu and net.get("value") == guimu.get("value"):
+            out.append({"level": "WARN", "metric": "净利润",
+                        "message": f"净利润 == 归母净利润 ({period}),口径可能混淆(净利润应含少数股东损益)。"})
+        if kf and guimu and guimu.get("value") is not None and kf.get("value") is not None and kf["value"] > guimu["value"]:
+            out.append({"level": "WARN", "metric": "扣非净利润",
+                        "message": f"扣非净利润({kf['value']}) > 归母净利润({guimu['value']}) ({period}),非经常性损益为负(可能有减值),需关注。"})
+    return out
+
+
+def check_unit_consistency(figures):
+    """同一指标不同报告期单位不一致 → WARN(万元/亿元混用)。"""
+    by_metric = {}
+    for f in figures:
+        by_metric.setdefault(f.get("metric"), []).append(f)
+    out = []
+    for metric, items in by_metric.items():
+        units = {i.get("unit") for i in items if i.get("unit")}
+        if len(units) > 1:
+            out.append({"level": "WARN", "metric": metric,
+                        "message": f"{metric} 出现多个单位 {sorted(units)},注意万元/亿元混用。"})
+    return out
+
+
+def check_cashflow_divergence(figures):
+    """净利润为正但经营现金流为负 → 盈利质量存疑。"""
+    out = []
+    for f in figures:
+        if f.get("metric") in ("归母净利润", "净利润") and (f.get("value") or 0) > 0:
+            cf = next((x for x in figures if x.get("metric") == "经营活动产生的现金流量净额"
+                       and x.get("period") == f.get("period")), None)
+            if cf and cf.get("value") is not None and cf.get("value") < 0:
+                out.append({"level": "WARN", "metric": f.get("metric"),
+                            "message": f"{f.get('metric')} 为正({f.get('value')}),但经营现金流为负({cf.get('value')}) ({f.get('period')}),盈利质量存疑。"})
+    return out
+
+
+def check_trend(figures):
+    """营业收入/归母净利润连续 ≥3 期下滑 → 提示。"""
+    out = []
+    for metric in ("营业收入", "归母净利润"):
+        items = sorted([f for f in figures if f.get("metric") == metric and f.get("period")],
+                       key=lambda f: str(f.get("period")))
+        vals = [i.get("value") for i in items if i.get("value") is not None]
+        if len(vals) >= 3 and all(vals[i] > vals[i + 1] for i in range(len(vals) - 1)):
+            out.append({"level": "WARN", "metric": metric,
+                        "message": f"{metric} 连续 {len(vals)} 期下滑,趋势需关注。"})
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description="财务数字交叉核对")
     ap.add_argument("input", help="figures JSON 文件")
@@ -134,6 +195,10 @@ def main():
     checks += check_growth(figures)
     checks += check_ranges(figures)
     checks += check_balance(figures)
+    checks += check_metric_consistency(figures)
+    checks += check_unit_consistency(figures)
+    checks += check_cashflow_divergence(figures)
+    checks += check_trend(figures)
     if not checks:
         checks.append({"level": "PASS", "metric": "-", "message": "未发现可自动核对的项目(或数据太少)。"})
 
