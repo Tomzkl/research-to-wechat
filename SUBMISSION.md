@@ -4,6 +4,15 @@
 
 ## 1. 提交到 Claude Code 官方插件目录
 
+> ⚠️ 官方目录已**不再接受 GitHub PR**(README 明确写"PR 无人监控")。正确路径是网页提交:
+>
+> 1. 打开 **https://claude.ai/directory/manage**
+> 2. 用 claude.ai 账号登录
+> 3. 提交 research-to-wechat(填描述、分类、仓库 https://github.com/Tomzkl/research-to-wechat)
+> 4. 等审核
+
+~~(以下旧 PR 模板已废弃,仅留作 marketplace 条目格式参考)~~
+
 目标仓库 `anthropics/claude-plugins-official`,提一个 PR,在其 marketplace 的 `plugins` 列表追加一条:
 
 ```json
