@@ -142,6 +142,12 @@ def _is_title_row(row) -> bool:
     return bool(joined) and not any(ch.isdigit() for ch in joined)
 
 
+def _looks_like_header(row) -> bool:
+    """表头行通常含「年/度/期/季/项目/指标/科目/附注」等列名;纯数据行(如「营业收入 | 数值」)不含。"""
+    joined = "".join(row)
+    return any(k in joined for k in ("年", "度", "期", "季", "项目", "指标", "科目", "附注"))
+
+
 def table_to_statement(table):
     """把一张二维表格转成结构化 statement;非数据表返回 None。"""
     rows = []
@@ -160,6 +166,12 @@ def table_to_statement(table):
         return None
     header = rows[idx]
     data_rows = rows[idx + 1:]
+
+    # 首行若是数据(「营业收入 | 数值 | 数值」这类无表头的指标表),合成表头并把它当数据
+    if not _looks_like_header(header):
+        n = max(len(r) for r in rows[idx:])
+        header = ["项目"] + [f"列{i + 1}" for i in range(n - 1)]
+        data_rows = rows[idx:]
 
     text = " ".join(" ".join(r) for r in rows)
     stype = classify_table(rows)
