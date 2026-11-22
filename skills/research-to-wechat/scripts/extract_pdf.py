@@ -119,8 +119,12 @@ def extract_pdf_tables_with_context(path: str):
         pdfium_doc.close()
     with pdfplumber.open(path) as pdf:
         for i, page in enumerate(pdf.pages):
+            # 上下文 = 当前页 + 上一页尾部(报表标题常在前一页末尾,表格在下一页)
+            context = page_texts[i] if i < len(page_texts) else ""
+            if i > 0 and i - 1 < len(page_texts):
+                context = page_texts[i - 1][-300:] + "\n" + context
             for t in page.extract_tables():
-                results.append((t, page_texts[i] if i < len(page_texts) else ""))
+                results.append((t, context))
     return results
 
 
@@ -183,6 +187,13 @@ def table_to_statement(table, page_text: str = None):
             rows.append(cells)
     if not rows:
         return None
+
+    # 若首列全空(常见于带边框的报表,如宁德时代),去掉空首列
+    if not any(r and r[0] for r in rows):
+        rows = [r[1:] if len(r) > 1 else [] for r in rows]
+        rows = [r for r in rows if any(r)]
+        if not rows:
+            return None
 
     # 收集开头无数字的标题行(如「合并利润表」),用于识别口径
     title_text = ""
@@ -254,24 +265,28 @@ def _first_data_value(values):
     return None
 
 
-def statements_to_key_figures(statements):
+UNIT_TO_YI = {"元": 1e-8, "千元": 1e-5, "万元": 1e-4, "百万元": 1e-2, "亿元": 1.0}
+
+
+def statements_to_key_figures(statements, unit_hint=None):
     """从合并报表中自动组装关键指标(flat figures),供核对/成文直接使用。"""
     figures = []
     for s in statements:
         if s.get("scope") != "consolidated":
             continue
+        unit = s.get("unit") or unit_hint or "元"
+        scale = UNIT_TO_YI.get(unit)
         for row in s["rows"]:
             label = row["label"].replace(" ", "").replace("\n", "")
             for pattern, stype, metric in KEY_METRIC_PATTERNS:
                 if s["type"] == stype and _match_metric(label, pattern):
                     val = _first_data_value(row["values"])
                     if val is not None:
-                        unit = s.get("unit") or "元"
                         figures.append({
                             "metric": metric,
                             "value": val,
                             "unit": unit,
-                            "value_yi": round(val / 1e8, 2) if unit == "元" else None,
+                            "value_yi": round(val * scale, 2) if scale is not None else None,
                             "statement": s["type"],
                         })
                     break
@@ -350,7 +365,7 @@ def main():
                         data["statements"].append(stmt)
                 kinds = {s["type"] for s in data["statements"]}
                 scoped = sum(1 for s in data["statements"] if s.get("scope"))
-                data["key_figures"] = statements_to_key_figures(data["statements"])
+                data["key_figures"] = statements_to_key_figures(data["statements"], meta.get("unit_hint"))
                 data["warnings"].append(
                     f"已从 PDF 抽取 {len(data['statements'])} 张表格"
                     f"({', '.join(sorted(kinds)) or 'unknown'};识别出 {scoped} 张合并/母公司报表)。"
