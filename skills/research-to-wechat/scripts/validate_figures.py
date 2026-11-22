@@ -133,9 +133,14 @@ def check_metric_consistency(figures):
         if net and guimu and net.get("value") == guimu.get("value"):
             out.append({"level": "WARN", "metric": "净利润",
                         "message": f"净利润 == 归母净利润 ({period}),口径可能混淆(净利润应含少数股东损益)。"})
-        if kf and guimu and guimu.get("value") is not None and kf.get("value") is not None and kf["value"] > guimu["value"]:
-            out.append({"level": "WARN", "metric": "扣非净利润",
-                        "message": f"扣非净利润({kf['value']}) > 归母净利润({guimu['value']}) ({period}),非经常性损益为负(可能有减值),需关注。"})
+        if kf and guimu and guimu.get("value"):
+            ratio = kf["value"] / guimu["value"]
+            if ratio < 0.9:
+                out.append({"level": "WARN", "metric": "扣非净利润",
+                            "message": f"扣非({kf['value']}) 仅占归母({guimu['value']}) 的 {ratio * 100:.0f}% ({period}),利润含较多非经常性收益(卖资产/补贴),需关注持续性。"})
+            elif ratio > 1.1:
+                out.append({"level": "WARN", "metric": "扣非净利润",
+                            "message": f"扣非({kf['value']}) 高于归母({guimu['value']}) {ratio * 100:.0f}% ({period}),非经常性损益为负(可能有减值)。"})
     return out
 
 
