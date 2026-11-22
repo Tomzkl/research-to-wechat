@@ -3,8 +3,10 @@
   "description": "把财报/研报变成一篇核对过数据、可直接群发的公众号文章 — Turn earnings/research reports into data-verified WeChat Official Account articles",
   "version": "1.0.0",
   "author": {
-    "name": "dominicharmon"
+    "name": "Tomzkl"
   },
+  "homepage": "https://github.com/Tomzkl/research-to-wechat",
+  "repository": "https://github.com/Tomzkl/research-to-wechat",
   "license": "MIT",
   "keywords": [
     "finance",
