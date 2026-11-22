@@ -1,0 +1,19 @@
+{
+  "name": "research-to-wechat",
+  "description": "把财报/研报变成一篇核对过数据、可直接群发的公众号文章 — Turn earnings/research reports into data-verified WeChat Official Account articles",
+  "version": "1.0.0",
+  "author": {
+    "name": "dominicharmon"
+  },
+  "license": "MIT",
+  "keywords": [
+    "finance",
+    "wechat",
+    "earnings",
+    "financial-report",
+    "article",
+    "财报",
+    "公众号",
+    "投资研究"
+  ]
+}

@@ -8,6 +8,10 @@
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Skill-orange)](https://claude.com/claude-code)
 
+<br>
+
+<img src="assets/demo.gif" alt="research-to-wechat demo" width="720">
+
 </div>
 
 > **English**: a Claude Code skill that turns an earnings / research report into a data-verified, publish-ready WeChat Official Account article in one pipeline. See [English](#english) below.
@@ -44,7 +48,15 @@
 
 ### 安装
 
-把 skill 目录复制到 Claude Code 的 skills 目录(Windows / macOS / Linux 同):
+**方式一:作为插件安装(推荐)**
+
+```bash
+# 把 <owner> 换成你的 GitHub 用户名
+/plugin marketplace add <owner>/research-to-wechat
+/plugin install research-to-wechat
+```
+
+**方式二:手动复制**
 
 ```bash
 cp -r skills/research-to-wechat ~/.claude/skills/
@@ -62,7 +74,7 @@ cp -r skills/research-to-wechat ~/.claude/skills/
 
 ### 示例
 
-`examples/` 下有可直接跑通的示例:
+`examples/` 下有可直接跑通的示例(4 份示例财报覆盖白酒 / 新能源 / 银行,均标注为虚构数据):
 
 ```bash
 # 1. 抽取(文本无需依赖;PDF 需 pip install pdfplumber)
@@ -81,10 +93,18 @@ python skills/research-to-wechat/scripts/render_wechat.py examples/sample_articl
 .
 ├── README.md
 ├── LICENSE
+├── assets/
+│   └── demo.gif               # 演示 GIF
+├── .claude-plugin/
+│   ├── plugin.json            # 插件元数据
+│   └── marketplace.json       # 单插件 marketplace
 ├── examples/
-│   ├── sample_report.txt      # 抽取示例输入
-│   ├── sample_figures.json    # 核对示例输入
-│   └── sample_article.md      # 排版示例输入
+│   ├── sample_report.txt             # 通用示例
+│   ├── sample_report_consumer.txt    # 白酒
+│   ├── sample_report_manufacturing.txt # 新能源
+│   ├── sample_report_bank.txt        # 银行
+│   ├── sample_figures.json           # 核对示例输入
+│   └── sample_article.md             # 排版示例输入
 └── skills/
     └── research-to-wechat/
         ├── SKILL.md               # 核心指令(流水线编排)

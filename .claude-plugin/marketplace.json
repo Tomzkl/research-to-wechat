@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "research-to-wechat",
+  "metadata": {
+    "description": "把财报/研报变成核对过数据、可直接群发的公众号文章"
+  },
+  "owner": {
+    "name": "dominicharmon"
+  },
+  "plugins": [
+    {
+      "name": "research-to-wechat",
+      "source": "."
+    }
+  ]
+}
